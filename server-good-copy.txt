@@ -1,0 +1,110 @@
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+
+// قاعدة بيانات وهمية لتخزين الطلبات والعروض
+let orders = [];
+
+// مسار استقبال طلبات العملاء
+app.post('/api/orders', (req, res) => {
+  const newOrder = {
+    id: Date.now().toString(),
+    ...req.body,
+    status: 'بانتظار العروض',
+    price: null,
+    qualityType: null,
+    qualityGrade: null,
+    merchantNotes: null,
+    createdAt: new Date().toISOString()
+  };
+  orders.push(newOrder);
+  res.status(201).json({ success: true, data: newOrder });
+});
+
+// مسار جلب جميع الطلبات
+app.get('/api/orders', (req, res) => {
+  res.json(orders);
+});
+
+// مسار استقبال عرض السعر والجودة والملاحظات من التاجر
+app.post('/api/orders/:id/offer', (req, res) => {
+  const orderId = req.params.id;
+  const { price, qualityType, qualityGrade, notes } = req.body;
+
+  const orderIndex = orders.findIndex(o => o.id.toString() === orderId.toString());
+  if (orderIndex !== -1) {
+    orders[orderIndex].price = price;
+    orders[orderIndex].qualityType = qualityType; // أصلي أو تجاري
+    orders[orderIndex].qualityGrade = qualityGrade; // درجة أولى، ثانية...
+    orders[orderIndex].merchantNotes = notes;
+    orders[orderIndex].status = 'تم إرسال العرض';
+
+    res.json({ success: true, data: orders[orderIndex] });
+  } else {
+    res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+  }
+});
+
+// مسار فك رقم الهيكل (VIN Decoder) عبر الـ API المجاني
+app.get('/api/decode-vin/:vin', async (req, res) => {
+  const vin = req.params.vin;
+  try {
+    const response = await axios.get(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`);
+    const results = response.data.Results;
+    if (results && results.length > 0) {
+      const carData = results[0];
+      res.json({
+        success: true,
+        data: {
+          make: carData.Make || 'غير معروف',
+          model: carData.Model || 'غير معروف',
+          year: carData.ModelYear || 'غير معروف'
+        }
+      });
+    } else {
+      res.status(404).json({ success: false, message: 'لم يتم العثور على بيانات رقم الهيكل' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'خطأ في الاتصال بخدمة فك رقم الهيكل' });
+  }
+});
+
+// مسار جلب القطع الشائعة للسيارة مرتبة وباللغة العربية (قائمة ضخمة وشاملة)
+app.get('/api/catalog/:brand/:model', (req, res) => {
+  const defaultArabicParts = [
+    { name: 'فلتر الزيت (مصفاة الزيت)', partNumber: '90915-YZZE1' },
+    { name: 'فلتر الهواء للمحرك', partNumber: '17801-0P050' },
+    { name: 'فلتر المكيف (فلتر الهواء الداخلي)', partNumber: '87139-0Y010' },
+    { name: 'فلتر البنزين (فلتر الوقود)', partNumber: '23300-21010' },
+    { name: 'فحمات الفرامل الأمامية (قماشات)', partNumber: '04465-0K240' },
+    { name: 'فحمات الفرامل الخلفية', partNumber: '04466-06160' },
+    { name: 'هوب فرامل أمامي (ديسك)', partNumber: '43512-0K040' },
+    { name: 'هوب فرامل خلفي', partNumber: '42431-0K020' },
+    { name: 'بواجي (شمعات الاحتراق / شعلات)', partNumber: '90919-01253' },
+    { name: 'أسلاك بواجي / كويل الإشعال', partNumber: '90919-02265' },
+    { name: 'سير الماكينة الرئيسي (سير الآلات)', partNumber: '90916-T2025' },
+    { name: 'شداد السير الأساسي', partNumber: '16620-0W110' },
+    { name: 'مساعدين تعليق أمامي (بامبر)', partNumber: '48510-80471' },
+    { name: 'مساعدين تعليق خلفي', partNumber: '48530-80582' },
+    { name: 'مضخة الماء (طرمبة الماء)', partNumber: '16100-39455' },
+    { name: 'بلف الحرارة (منظم حرارة المحرك / ترموستات)', partNumber: '90916-03129' },
+    { name: 'رأس عكسي / مفصل عجل (عكس خارجي)', partNumber: '43410-0K020' },
+    { name: 'حساس الحرارة للمحرك', partNumber: '89422-33030' },
+    { name: 'غلاف فلتر الزيت (غطاء المصفاة)', partNumber: '15620-37010' }
+  ];
+
+  res.json({
+    success: true,
+    data: defaultArabicParts
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
