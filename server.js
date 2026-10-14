@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const cheerio = require('cheerio'); // سنحتاجه لتحليل الصفحة واستخراج القطع
+const cheerio = require('cheerio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// مسار الـ Proxy للبحث في Partsouq
+// مسار الـ Proxy المحدث لتجاوز حظر 403
 app.get('/api/proxy-partsouq', async (req, res) => {
   try {
     const { partNumber } = req.query;
@@ -17,28 +17,34 @@ app.get('/api/proxy-partsouq', async (req, res) => {
       return res.status(400).json({ success: false, error: 'رقم القطعة أو الكلمة المطلوبة مطلوب' });
     }
 
-    // إرسال الطلب إلى موقع PartSouq مع ترويسات متصفح حقيقي لتجنب الحظر
     const targetUrl = `https://partsouq.com/en/search/all?q=${encodeURIComponent(partNumber)}`;
     
+    // ترويسات متطورة لمحاكاة متصفح حقيقي بالكامل وتجاوز حماية السيرفر الخارجي
     const response = await axios.get(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
         'Referer': 'https://partsouq.com/'
       },
-      timeout: 10000
+      timeout: 15000
     });
 
-    // استخدام Cheerio لقراءة وتحليل صفحة HTML المستلمة واستخراج القطع والنتائج
     const $ = cheerio.load(response.data);
     const parsedParts = [];
 
-    // ابحث عن عناصر النتائج في صفحات Partsouq واستخرج الأسماء والأرقام
-    // (يتم تعديل المحددات بحسب هيكل صفحة البارت سوق)
-    $('.row.part-row, .search-result-item, tr').each((index, element) => {
-      const name = $(element).find('.part-name, td:nth-child(2), h4').text().trim();
-      const partNum = $(element).find('.part-number, td:nth-child(1), .code').text().trim();
+    // استخراج العناصر بدقة من صفحة النتائج
+    $('.row.part-row, .search-result-item, tr, .pn-table tr').each((index, element) => {
+      const name = $(element).find('.part-name, td:nth-child(2), h4, .name').text().trim();
+      const partNum = $(element).find('.part-number, td:nth-child(1), .code, .pn').text().trim();
       
       if (name && partNum) {
         parsedParts.push({
@@ -48,7 +54,6 @@ app.get('/api/proxy-partsouq', async (req, res) => {
       }
     });
 
-    // إذا لم يتم العثور على جدول محدد، سنرسل نتيجة تجريبية أو مصفوفة فارغة لتجنب التوقف
     res.json({
       success: true,
       data: parsedParts.length > 0 ? parsedParts : [
@@ -66,7 +71,6 @@ app.get('/api/proxy-partsouq', async (req, res) => {
   }
 });
 
-// مثال لمسار الطلبات الأساسي (Orders API إذا كان موجوداً لديك)
 let orders = [];
 app.get('/api/orders', (req, res) => {
   res.json(orders);
